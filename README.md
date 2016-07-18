@@ -1,2 +1,2 @@
 # MSBA_Code
-Test
+A repository for pieces of code related to the MSBA CourseWork
