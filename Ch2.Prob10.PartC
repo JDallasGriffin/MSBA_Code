@@ -1,0 +1,8 @@
+#R Code Sample - Ch2. Prob 10 Part C
+> library(ggplot2)
+> library(reshape2)
+> mtmelt <- melt(Boston, id = "crim")
+> 
+> ggplot(mtmelt, aes(x = value, y = crim)) +
++     facet_wrap(~variable, scales = "free") +
++     geom_point()
