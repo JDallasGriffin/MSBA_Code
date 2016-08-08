@@ -114,7 +114,6 @@ Then, another boost model was run, this time factoring in only variables that ar
 
 Finally, using the model that only factors in known variables, and plugged in the variables to predict for the model described in the assignment in two different set ups and compared them side-by-side. One set up had a green building, the other was a non-green building. The model predicts very similar rents per square foot, and as such it would not be profitable to add 5% to the building costs for green certification. 
 
-
 The "stats guru" made an error in simply comparing the average rent with green certification and without. As shown below, newer buildings tend to be energy certified, and newer buildings also tend to have a higher rent per square foot. This and many other factors, such as class_a and size are highly correlated with green certification, to an extent with which one can reject the null hypothesis, and these factors are also associated with higher rent. These confounding variables are the reason why the stats guru's logic is misguided.
 
 ```{r, echo = FALSE}
@@ -143,6 +142,7 @@ YahooPricesToReturns = function(series) {
 	as.matrix(na.omit(percentreturn))
 }
 ```
+##Bootstrapping
 
 ###Even Split
 This section calculates the relative risk for a moderate portfolio. The portfolio represents an even split among 5 asset classes:
