@@ -1,0 +1,402 @@
+---
+title: "STA 380 - Exercise 1"
+author: "Dallas Griffin, Estevan Gonzalez, Sean Kessel"
+date: "August 8, 2016"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, include = FALSE}
+rm(list=ls())
+library(ggplot2)
+library(reshape)
+library(cluster)
+library(flexclust)
+set.seed(1)
+#library(HSAUR)
+Market = read.table("social_marketing.txt",
+                       header = TRUE,
+                       sep = ",")
+```
+## Probablity Practice
+
+### Part A - Truthful Clickers
+$P=\frac{.65-(.3/2)}{1-.3}$
+
+```{r, echo = FALSE}
+
+cat("By the Law of Total Probability: \n")
+
+y = (.65 - (.3/2))/(1-.3)
+
+
+cat(paste("The fraction of truthful yes responces is ",round(y,4),"\n"))
+
+
+```
+### Part B - Medical Testing
+
+$P(HaveDisease|Test+)$$=\frac{P(HaveDisease)*P(Test+|HaveDisease)}{P(Test+)}$
+
+
+$P(Test+) =$ $P(Test+|HaveDisease)*P(HaveDisease)+ P(Test+|DoNotHaveDisease)*P(DoNotHaveDisease)$
+
+```{r, echo = FALSE}
+
+b = (0.993*0.000025) + (0.9999*(1-0.000025))
+k = (0.000025*0.993)/b
+
+cat(paste("According to Bayes' Law:\n The probability of the patient having the disease given a positive test is:",round(k,7),"\n Therefor I would not recommend implementing a universal testing policy."))
+```
+
+## Exploratory Analysis: Green Buildings
+```{r, echo = FALSE}
+library(gbm)
+
+gBuild = read.csv("greenbuildings.csv")
+
+train_gBuild= gBuild[1:3158,]
+test_gBuild = gBuild[3159:7894,]
+
+gBuild_scaled = data.frame(scale(gBuild))
+gBuild_train_scaled = data.frame(scale(train_gBuild))
+gBuild_test_scaled = data.frame(scale(test_gBuild))
+
+# Boosted model (using unscaled data)
+
+boost.gBuild =gbm(Rent~.-CS_PropertyID-cluster_rent,data=train_gBuild, distribution='gaussian', n.trees =1000 , shrinkage =0.01 )
+
+summary(boost.gBuild)
+title(main="Relative Importance of All Variables", xlab="Relative Importance", ylab="Variables")
+
+boost.pred.gBuild = predict(boost.gBuild , test_gBuild, n.trees=1000)
+
+MSE = mean(( boost.pred.gBuild - test_gBuild$Rent)^2)
+RMSE = sqrt(MSE)
+
+
+boost.gBuild.known =gbm(Rent~size+age+stories+LEED+Energystar+green_rating,data=train_gBuild, distribution='gaussian', n.trees =1000 , shrinkage =0.01 )
+boost.pred.gBuild.known = predict(boost.gBuild.known , test_gBuild, n.trees=1000)
+MSE = mean(( boost.pred.gBuild.known - test_gBuild$Rent)^2)
+RMSE = sqrt(MSE)
+
+
+summary(boost.gBuild.known)
+title(main="Relative Importance of Size, Age, Stories, LEED, Energystar, and Green Rating", xlab="Relative Importance", ylab="Variables")
+
+boost.pred.gBuild.known = predict(boost.gBuild.known , test_gBuild, n.trees=1000)
+ALL_ENERGY_CERT = c(250000,0,15,1,1,1)
+ALL_ENERGY_CERT = c(250000,0,15,1,1,1)
+ALL_ENERGY_CERT_df = data.frame(ALL_ENERGY_CERT)
+ALL_ENERGY_CERT_df = t(ALL_ENERGY_CERT_df)
+colnames(ALL_ENERGY_CERT_df) = c("size","age","stories","LEED","Energystar","green_rating")
+ALL_ENERGY_CERT_df = data.frame(ALL_ENERGY_CERT_df)
+boost.pred.gBuild.cert = predict(boost.gBuild.known , ALL_ENERGY_CERT_df, n.trees=1000)
+
+NO_ENERGY_CERT = c(250000,0,15,0,0,0)
+NO_ENERGY_CERT = c(250000,0,15,0,0,0)
+NO_ENERGY_CERT_df = data.frame(NO_ENERGY_CERT)
+NO_ENERGY_CERT_df = t(NO_ENERGY_CERT_df)
+colnames(NO_ENERGY_CERT_df) = c("size","age","stories","LEED","Energystar","green_rating")
+NO_ENERGY_CERT_df = data.frame(NO_ENERGY_CERT_df)
+boost.pred.gBuild.nocert = predict(boost.gBuild.known , NO_ENERGY_CERT_df, n.trees=1000)
+
+
+cat(paste("Rent per square foot, with all energy certifications: ",boost.pred.gBuild.cert,"\nRent per square foot, with no energy certifications: ",boost.pred.gBuild.nocert,"\nThese rents are nearly identical, and given that all previous models have shown the insignificance of the green rating, the small variation in the two predictions is most likely due to randomness in the data."))
+
+```
+
+To begin, the boost model shows the relative importance of LEED, Energystar, and the green rating to be nearly zero in determining the rent per square foot. 
+
+Then, another boost model was run, this time factoring in only variables that are known going into construction of the building (age, stories, class_a, green rating, EnergyStar, and Leed). Once again, the energy efficient ratings were not significant in determining rent.
+
+Finally, using the model that only factors in known variables, and plugged in the variables to predict for the model described in the assignment in two different set ups and compared them side-by-side. One set up had a green building, the other was a non-green building. The model predicts very similar rents per square foot, and as such it would not be profitable to add 5% to the building costs for green certification. 
+
+
+The "stats guru" made an error in simply comparing the average rent with green certification and without. As shown below, newer buildings tend to be energy certified, and newer buildings also tend to have a higher rent per square foot. This and many other factors, such as class_a and size are highly correlated with green certification, to an extent with which one can reject the null hypothesis, and these factors are also associated with higher rent. These confounding variables are the reason why the stats guru's logic is misguided.
+
+```{r, echo = FALSE}
+
+
+linear.gBuild.w =lm(green_rating~.-CS_PropertyID-cluster_rent-LEED-Energystar-Rent,data=data.frame(scale(train_gBuild)))
+summary(linear.gBuild.w)
+
+
+```
+
+```{r setup2, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(mosaic)
+library(fImport)
+library(foreach)
+
+YahooPricesToReturns = function(series) {
+	mycols = grep('Adj.Close', colnames(series))
+	closingprice = series[,mycols]
+	N = nrow(closingprice)
+	percentreturn = as.data.frame(closingprice[2:N,]) / as.data.frame(closingprice[1:(N-1),]) - 1
+	mynames = strsplit(colnames(percentreturn), '.', fixed=TRUE)
+	mynames = lapply(mynames, function(x) return(paste0(x[1], ".PctReturn")))
+	colnames(percentreturn) = mynames
+	as.matrix(na.omit(percentreturn))
+}
+```
+
+###Even Split
+This section calculates the relative risk for a moderate portfolio. The portfolio represents an even split among 5 asset classes:
+*US domestic equities (SPY: the S&P 500 stock index)
+*US Treasury bonds (TLT)
+*Investment-grade corporate bonds (LQD)
+*Emerging-market equities (EEM)
+*Real estate (VNQ)
+
+<br>
+
+```{r, echo=FALSE}
+mystocks = c("SPY", "TLT", "LQD", "EEM", "VNQ")
+myprices = yahooSeries(mystocks, from='2010-01-01', to='2016-08-01')
+
+myreturns = YahooPricesToReturns(myprices)
+
+
+n_days = 20
+
+sim1 = foreach(i=1:5000, .combine='rbind') %do% {
+	totalwealth = 100000
+	weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+	holdings = weights * totalwealth
+	wealthtracker = rep(0, n_days) # Set up a placeholder to track total wealth
+	for(today in 1:n_days) {
+		return.today = resample(myreturns, 1, orig.ids=FALSE)
+		holdings = holdings + holdings*return.today
+		totalwealth = sum(holdings)
+		holdings = totalwealth * weights
+		wealthtracker[today] = totalwealth
+	}
+	wealthtracker
+}
+
+hist(sim1[,n_days], 25, main = "Moderate Portfolio Value after 20 days", xlab = "Portfolio Value", border=rgb(0,0,255,255,maxColorValue=255), col=rgb(0,0,255,150,maxColorValue=255))
+```
+
+The graph above is a histogram of the 20-day portfolio value after being randomly calculated 5000 times.
+
+```{r, echo=FALSE}
+# Profit/loss
+hist_mod = hist(sim1[,n_days]- 100000, main = "Moderate Portfolio gain/loss after 20 days", xlab = "Portfolio Value", border=rgb(0,0,255,255,maxColorValue=255), col=rgb(0,0,255,150,maxColorValue=255))
+hist_mod
+```
+
+Here is the same graph after subtracting the original investment amount, leaving a histogram of gains and losses.
+
+```{r, echo=FALSE}
+# Calculate 5% value at risk
+quantile(sim1[,n_days], 0.05) - 100000
+```
+
+The value at risk at 5% for this equaly-rated protfolio is -$3,886.
+<br>
+
+###Safe Split
+This portfolio is a safe one, comprised of safe assest that offer low risk, at the expense of less reward.
+```{r, echo=FALSE}
+sigma_SPY = sd(myreturns[,1])
+sigma_TLT = sd(myreturns[,2])
+sigma_LQD = sd(myreturns[,3])
+sigma_EEM = sd(myreturns[,4])
+sigma_VNQ = sd(myreturns[,5])
+```
+
+```{r, echo = TRUE}
+sigma_SPY
+sigma_TLT
+sigma_LQD
+sigma_EEM
+sigma_VNQ
+```
+
+Based on the stocks' standard deviations (volatility), SPY, TLT and LQD are the "safest" stocks. <br>
+Weights of .4(LQD), .3(TLT), and .3(SPY) will be used. 
+<br>
+
+```{r, echo=FALSE}
+mystocks = c("LQD", "TLT", "SPY")
+myprices = yahooSeries(mystocks, from='2010-01-01', to='2016-08-01')
+
+myreturns = YahooPricesToReturns(myprices)
+
+n_days = 20
+
+sim2 = foreach(i=1:5000, .combine='rbind') %do% {
+	totalwealth = 100000
+	weights = c(0.4, 0.3, 0.3)
+	holdings = weights * totalwealth
+	wealthtracker = rep(0, n_days) # Set up a placeholder to track total wealth
+	for(today in 1:n_days) {
+		return.today = resample(myreturns, 1, orig.ids=FALSE)
+		holdings = holdings + holdings*return.today
+		totalwealth = sum(holdings)
+		holdings = totalwealth * weights
+		wealthtracker[today] = totalwealth
+	}
+	wealthtracker
+}
+```
+
+```{r, echo=FALSE}
+hist(sim2[,n_days], 25, main = "Safe Portfolio Value after 20 days", xlab = "Portfolio Value", border=rgb(0,255,0,255,maxColorValue=255), col=rgb(0,255,0,150,maxColorValue=255))
+```
+
+The graph above is a histogram of the 20-day portfolio value after being randomly calculated 5000 times.
+
+```{r, echo=FALSE}
+# Profit/loss
+hist_safe = hist(sim1[,n_days]- 100000, main = "Safe Portfolio gain/loss after 20 days", xlab = "Portfolio Value", border=rgb(0,255,0,255,maxColorValue=255), col=rgb(0,255,0,150,maxColorValue=255))
+hist_safe
+```
+
+Here is the same graph after subtracting the original investment amount, leaving a histogram of gains and losses.
+
+```{r, echo=FALSE}
+# Calculate 5% value at risk
+quantile(sim1[,n_days], 0.05) - 100000
+```
+
+he value at risk at 5% for this "safe" portfolio is -$1,986, which is expected due to its low risk.
+
+<br>
+
+### Aggresive Split
+This portfolio is a risky porfolio, comprised of assests that reward high risk with high returns.
+
+<br>
+
+Based on the stocks' standard deviations (volatility), EEM and VNQ are the "aggresive" stocks. <br>
+Weights of .5(EEM) and .5(VNQ) will be used. 
+<br>
+
+```{r, echo=FALSE}
+mystocks = c("EEM", "VNQ")
+myprices = yahooSeries(mystocks, from='2010-01-01', to='2016-08-01')
+
+myreturns = YahooPricesToReturns(myprices)
+
+n_days = 20
+
+sim3 = foreach(i=1:5000, .combine='rbind') %do% {
+	totalwealth = 100000
+	weights = c(0.5, 0.5)
+	holdings = weights * totalwealth
+	wealthtracker = rep(0, n_days) # Set up a placeholder to track total wealth
+	for(today in 1:n_days) {
+		return.today = resample(myreturns, 1, orig.ids=FALSE)
+		holdings = holdings + holdings*return.today
+		totalwealth = sum(holdings)
+		holdings = totalwealth * weights
+		wealthtracker[today] = totalwealth
+	}
+	wealthtracker
+}
+```
+
+```{r, echo=FALSE}
+hist(sim3[,n_days], 25, main = "Aggresive Portfolio Value after 20 days", xlab = "Portfolio Value", border=rgb(255,0,0,255,maxColorValue=255), col=rgb(255,0,0,150,maxColorValue=255))
+```
+
+The graph above is a histogram of the 20-day portfolio value after being randomly calculated 5000 times.
+
+```{r, echo=FALSE}
+# Profit/loss
+hist_agg = hist(sim1[,n_days]- 100000, main = "Aggresive Portfolio gain/loss after 20 days", xlab = "Portfolio Value", border=rgb(255,0,0,255,maxColorValue=255), col=rgb(255,0,0,150,maxColorValue=255))
+hist_agg
+```
+
+Here is the same graph after subtracting the original investment amount, leaving a histogram of gains and losses.
+
+```{r, echo=FALSE}
+# Calculate 5% value at risk
+quantile(sim1[,n_days], 0.05) - 100000
+```
+
+The value at risk at 5% for this "aggressive" portfolio is -$8,057, which is expected due to its high risk.
+
+<br>
+
+```{r, echo=FALSE}
+hist(sim3[,n_days], 25, border=rgb(255,0,0,255,maxColorValue=255), col=rgb(255,0,0,225,maxColorValue=255), main = "Value of 3 Different Portfolios after 20 Days", xlab = "Portfolio Value")
+
+hist(sim1[,n_days], 25, add=TRUE, border=rgb(0,0,255,200,maxColorValue=255), col=rgb(0,0,255,170,maxColorValue=255))
+
+hist(sim2[,n_days], 25, add=TRUE, border=rgb(0,255,0,150,maxColorValue=255), col=rgb(0,255,0,120,maxColorValue=255))
+
+```
+
+The graph above combines the 3 histograms into 1. Notice that the low risk portfolio (green) has a less spread and peak. On the other hand, the high risk portfolio (red) has a higher spread and peak. The moderately risky portfolio (blue) falls inbetween the two.
+
+## Market Segmentation Report - NutrientH20 Twitter Followers
+
+To better understand NutrientH20's Twitter followers, we first examined what they were talking about most in the figure below.
+
+```{r, echo = FALSE}
+#Exploratory Analysis
+#summary(Market)
+#cor(Market[2:37])
+#apply(Market[2:37] , 2, var)
+## Most common interests
+Market_melt = melt(Market,variable_name = 'interest', id=("X"))
+
+ggplot(Market_melt, aes(x=reorder(interest, -value), y=value))+
+geom_bar(stat="identity")+
+ggtitle('Common Interests Among NutrientH20 Followers')+
+xlab("Interest")+
+ylab("Tweets")+
+theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+```
+
+By far the most frequently discussed topic was the rather amgibuous "chatter". Photo sharing and health & nutrition were a close second, with the latter perhaps revealing a little about the "anonymous" consumer brand's product offering and target market. However, without data on a larger segment of Twitter followers, it is difficult to draw too many conclusions about NutrientH20's followers as a whole.
+
+Next, we looked to understand in the figure below the distribution of NutrientH20's follower activity (as defined by number of tweets).
+```{r echo=FALSE}
+
+## User Activity Breakdown
+Market$TotalTweets = rowSums(Market[,-1])
+hist(Market$TotalTweets, main = 'Histogram of Users by Twitter Activity', xlab = 'Tweets', ylab = 'Users',col = "peachpuff")
+abline(v = median(Market$TotalTweets),
+ col = "red",
+ lwd = 2)
+abline(v = mean(Market$TotalTweets),
+ col = "royalblue",
+ lwd = 2)
+legend(x = "topright",
+ c("Mean", "Median"),
+ col = c("royalblue", "red"),
+ lwd = c(2, 2))
+```
+
+*NOTE: Tweet volumes don't account for tweets categorized in multiple interests*
+
+Finally, we attempted to segment the followers using Principle Compoments Analysis. See table below for the rotation of the first two principle components and the chart below for the variance explained by each sequential principle component. 
+
+```{r echo=FALSE}
+#Principle Components
+# Scaled to normalize for frequency of tweets by users.
+market_pc = prcomp(Market[2:37], scale.=TRUE)
+#summary(market_pc)
+cat('Rotation of First Two Principle Components')
+market_pc$rotation[1:36,1:2]
+market_pc_scores = market_pc$x
+#biplot(market_pc, scale=0)
+
+market_pc.var=market_pc$sdev ^2
+market_pc.pve=market_pc.var/sum(market_pc.var)
+par(mfrow=c(1,2),oma = c(0, 0, 2, 0))
+plot(market_pc.pve, xlab="Principal Component ", ylab="Proportion of Variance Explained ", ylim=c(0,1),type='b')
+plot(cumsum(market_pc.pve), xlab="Principal Component ", ylab="Cumulative Proportion of Variance Explained", ylim=c(0,1),type='b')
+mtext('PCA Variance Charts', outer = TRUE, cex = 1.5)
+
+#qplot(market_pc_scores[,1], market_pc_scores[,2], xlab='Component 1', ylab='Component 2')
+```
+
+Unfortunately the variance explained by each of the Principle Components increases fairly linearly, so it is difficult to reduce the dimensions of the data without sacrificing a substantial amount of information. However, it is possible to make a few educated guesses about the first two principle componets. Due to the fact all coefficients are negative, the first seems to capture the fairly high number of less active users (see histrogram in Fig Y) who do not post much about anything. The second, with high coefficients in chatter(.2), photo sharing (.3), and fashion (.27) and low coefficients in sports fandom (- .3) and parenting (-.3) is most likely capturing young women. While PCA gives a good start towards segmenting the population, further analysis with a combination of more sophisticated tools is necessary due to the high dimensionality and fairly low correlation of the dataset.
