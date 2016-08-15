@@ -1,0 +1,143 @@
+---
+title: "STA 380 - Exercise 2"
+author: "Dallas Griffin, Estevan Gonzalez, Sean Kessel"
+date: "August 15, 2016"
+output: html_document
+---
+## Flights at ABIA
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, echo = FALSE}
+rm(list=ls())
+library(ggplot2)
+library(reshape)
+set.seed(1)
+
+setwd("C:/Users/Dallas/OneDrive/MSBA Program/Summer 2016 Courses/STAT Part 2/STA380-master/STA380-master/data")
+abia = read.csv("ABIA.csv")
+
+abia$flight_status <- ifelse(abia$Cancelled == 1,"Cancelled",ifelse(abia$Diverted == 1,"Diverted",ifelse(abia$ArrDelay > 0,"Delayed","On-Time")))
+
+abia_agg = aggregate(FlightNum~Carrier+flight_status, data=abia, length)
+
+abia_agg$flight_status <- factor(abia_agg$flight_status, levels = c("On-Time","Delayed", "Diverted", "Cancelled"))
+
+abia_agg <- abia_agg[order(abia_agg$Carrier, abia_agg$flight_status),]
+
+colPalette <- c("#66CC77", "#FFFF77", "#FFBB77", "#777777")
+
+ggplot(data = abia_agg, aes(x = reorder(Carrier, FlightNum), y = FlightNum, fill = flight_status)) +
+    geom_bar(stat="identity") +
+    coord_flip() +
+    scale_fill_manual(values=colPalette) +
+    labs(title = "Figure 1 - Flights & Status by Carrier (ABIA 2008)", y = "Flights", x = "Carrier", fill = "Flight Status")
+```
+
+Figure 1 is an integrated visualization of two insights from the 2008 flight data from Austin-Bergstrom Interational Airport: the total volume of flights in & out for each airline and their status. Southwest & American clearly dominate airline traffic, but suffer from fairly high rates of delays. Additionally, American had more cancellations then Southwest despite only having ~60% of the flight volume.
+
+## Author Attribution
+
+Model 1: Use PCA to reduce the word matrix into principle components, then regress based on PC
+```{r, echo = False}
+library(tm)
+library(pls)
+
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+
+author_dirs = Sys.glob('../data/ReutersC50/C50train/*')
+file_list = NULL
+authors = NULL
+
+for(author in author_dirs) {
+	author_name = substring(author, first=29)
+	files_to_add = Sys.glob(paste0(author, '/*.txt'))
+	file_list = append(file_list, files_to_add)
+	authors = append(authors, rep(author_name, length(files_to_add)))
+}
+
+# Need a more clever regex to get better names here
+docs_train = lapply(file_list, readerPlain) 
+names(docs_train) = file_list
+names(docs_train) = sub('.txt', '', names(docs_train))
+
+corpus_train = Corpus(VectorSource(docs_train))
+names(corpus_train) = file_list
+
+# Text Preprocessing
+corpus_train = tm_map(corpus_train, content_transformer(tolower)) # make everything lowercase
+corpus_train = tm_map(corpus_train, content_transformer(removeNumbers)) # remove numbers
+corpus_train = tm_map(corpus_train, content_transformer(removePunctuation)) # remove punctuation
+corpus_train = tm_map(corpus_train, content_transformer(stripWhitespace)) # remove excess white-space
+corpus_train = tm_map(corpus_train, content_transformer(removeWords), stopwords("SMART")) #remove stop-words
+corpus_train = tm_map(corpus_train, stemDocument, language = "english") #stem words
+
+DTM_train = DocumentTermMatrix(corpus_train, control = list(weighting = weightTfIdf))
+DTM_train = removeSparseTerms(DTM_train, 0.975) #remove sparse  terms
+
+X = as.matrix(DTM_train)
+ 0.
+# PCA on term frequencies
+pca_train = prcomp(X, scale=TRUE)
+
+#Fig 2 - % Variance Explained
+pca_train.var=pca_train$sdev ^2
+pca_train.pve=pca_train.var/sum(pca_train.var)
+par(mfrow=c(1,2),oma = c(0, 0, 2, 0))
+plot(pca_train.pve, xlab="Principal Component ", ylab="Proportion of Variance Explained ", ylim=c(0,1),type='b')
+plot(cumsum(pca_train.pve), xlab="Principal Component ", ylab="Cumulative Proportion of Variance Explained", ylim=c(0,1),type='b')
+mtext('Figure 2 - PCA Variance Charts', outer = TRUE, cex = 1.5)
+
+#pca_train$rotation[order(abs(pca_train$rotation[,1]),decreasing=TRUE),1][1:25]
+#pca_train$rotation[order(abs(pca_train$rotation[,2]),decreasing=TRUE),2][1:25]
+
+# Figure 3 - First by Authors by First Two PC 
+qplot(pca_train$x[,1][1:227], pca_train$x[,2][1:227], color=authors[1:227], xlab='Component 1', ylab='Component 2', main='Figure 3: First 5 Authors on PCA 1 & 2')
+
+# Predictive Model 1 - Gradient Boosting Classifier
+library(gbm)
+pred_matrix = cbind(authors,X)
+pred_df = data.frame(pred_matrix)
+
+pred_df = data.frame(pca_train$x[,1:500])
+
+pred_df$authors = authors
+
+author.boost = gbm(authors~.,data=pred_df,distribution= "multinomial",n.trees=1000, shrinkage = .01)
+
+#Predictive Model 2 - PCR
+
+#pca_500 <- sapply(pca_train$x[,1:500], as.numeric)
+
+#PCR - find ideal # of PCR
+pcr.fit=pcr(authors~., data=pca_train,scale=TRUE, validation ="CV")
+validationplot(pcr.fit)
+
+```
+
+## Association Rule Mining
+
+The support supp(X) of an itemset X is defined as the proportion of transactions in the data set which contain the itemset
+
+Confidence can be interpreted as an estimate of the probability P(Y |X), the probability of finding the RHS of the rule in transactions under the condition that these transactions also contain the LHS
+
+The lift of a rule is defined as lift(X ??? Y ) = supp(X ??? Y )/(supp(X)supp(Y )), an dcan be interpreted as the deviation of the support of the whole rule from the support expected under independence given the supports of the LHS and the RHS. Greater lift values indicate stronger associations
+
+```{r echo=false}
+library(arules)
+
+grocerytrans = read.transactions("groceries.txt", format = "basket", sep = ",")
+
+groceryrules <- apriori(grocerytrans, parameter=list(support=.005, confidence=.25, maxlen=4))
+
+inspect(groceryrules)
+
+inspect(subset(groceryrules, subset=support >= 0.05 & lift >= 1.01))
+
+inspect(subset(groceryrules, subset=lift >= 3.75))
+
+inspect(subset(groceryrules, subset=confidence >= .65))
+
+```
